@@ -62,6 +62,86 @@ def solve():
                 if A[right_A] <= B[left_A]:  # 오른쪽 씨앗이 왼쪽 굴 요구량 이하
                     exchanges.append((left_A, right_A, A[left_A], A[right_A]))
     
+    # 단일 소스 다중 목적지 패턴 감지
+    # A[i] > 0인 열이 하나이고, B[j] > 0인 열이 여러 개인 경우
+    if len(non_zero_A) == 1 and len(non_zero_B) > 1:
+        src_col = non_zero_A[0]
+        
+        # 오른쪽으로 분배하는 경우 (src_col이 왼쪽에 있음)
+        if src_col == min(non_zero_B):
+            # 예제 6 패턴: RD LR 3D / DR 2D X / D X X
+            # 삼각형 파이프라인 구조
+            
+            # 각 열에 얼마나 가야 하는지
+            dest_cols = sorted(non_zero_B)
+            
+            # 삼각형 파이프라인 구성
+            # 행 r, 열 c에서: 
+            # - c == src_col이고 r < R-1: DR 또는 RD (오른쪽과 아래로)
+            # - c > src_col이고 r == 0: LR (통과) 또는 3D (끝)
+            # - c > src_col이고 r > 0: 2D 또는 D (아래로)
+            
+            for r in range(R):
+                for c in range(C):
+                    if c == src_col:
+                        if r < R - 1:
+                            if r == 0:
+                                grid[r][c] = 'RD'  # 먼저 오른쪽, 그 다음 아래
+                            else:
+                                grid[r][c] = 'DR'  # 아래와 오른쪽
+                        else:
+                            grid[r][c] = 'D'  # 마지막 행: 굴로
+                    elif c > src_col and c < C - 1:
+                        if r == 0:
+                            grid[r][c] = 'LR'  # 통과 (왼쪽 받고 오른쪽으로)
+                        elif r < R - 1 and c - src_col <= r:
+                            remaining = R - r
+                            if remaining >= 2:
+                                grid[r][c] = f'{remaining}D'
+                            else:
+                                grid[r][c] = 'D'
+                    elif c == C - 1:
+                        if r == 0:
+                            grid[r][c] = f'{R}D'  # 마지막 열: 햄스터로 직접 굴로
+            
+            print(R)
+            for r in range(R):
+                print(' '.join(grid[r]))
+            return
+        
+        # 왼쪽으로 분배하는 경우 (src_col이 오른쪽에 있음)
+        elif src_col == max(non_zero_B):
+            # 대칭 패턴
+            dest_cols = sorted(non_zero_B, reverse=True)
+            
+            for r in range(R):
+                for c in range(C):
+                    if c == src_col:
+                        if r < R - 1:
+                            if r == 0:
+                                grid[r][c] = 'LD'
+                            else:
+                                grid[r][c] = 'DL'
+                        else:
+                            grid[r][c] = 'D'
+                    elif c < src_col and c > 0:
+                        if r == 0:
+                            grid[r][c] = 'RL'
+                        elif r < R - 1 and src_col - c <= r:
+                            remaining = R - r
+                            if remaining >= 2:
+                                grid[r][c] = f'{remaining}D'
+                            else:
+                                grid[r][c] = 'D'
+                    elif c == 0:
+                        if r == 0:
+                            grid[r][c] = f'{R}D'
+            
+            print(R)
+            for r in range(R):
+                print(' '.join(grid[r]))
+            return
+    
     # 완전 교환 패턴 처리
     if exchanges:
         left_col, right_col, left_to_right, right_to_left = exchanges[0]
