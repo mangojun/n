@@ -14,12 +14,13 @@ def solve():
     R = C
     grid = [['X'] * C for _ in range(R)]
     
-    # 전송 계획
-    transfer = [[0] * C for _ in range(C)]
+    # 양방향 교환 패턴 감지
+    # 열 i와 열 j 사이에 양방향 흐름이 있는지 확인
     
+    # 누적 합 기반 흐름 계산
     cumsum_A = 0
     cumsum_B = 0
-    flow = [0] * C
+    flow = [0] * C  # flow[c] = 열 c와 c+1 사이를 지나는 순수 흐름
     
     for c in range(C):
         cumsum_A += A[c]
@@ -27,9 +28,78 @@ def solve():
         if c < C - 1:
             flow[c] = cumsum_A - cumsum_B
     
+    # 양방향 교환 패턴 감지
+    # 케이스: 열 i에서 모두 오른쪽으로, 열 j에서 모두 왼쪽으로 (i < j)
+    exchanges = []  # (left_col, right_col, left_to_right_amt, right_to_left_amt)
+    
+    # 전송 계획
+    transfer = [[0] * C for _ in range(C)]
     remaining_A = A[:]
     remaining_B = B[:]
     
+    # 단순 케이스: 열 i와 열 j만 씨앗이 있고, 완전 교환이 가능한 경우
+    
+    non_zero_A = [c for c in range(C) if A[c] > 0]
+    non_zero_B = [c for c in range(C) if B[c] > 0]
+    
+    # 양방향 교환 감지: 좌측과 우측이 서로 씨앗을 교환해야 하는 경우
+    if len(non_zero_A) == 2 and len(non_zero_B) == 2:
+        left_A = min(non_zero_A)
+        right_A = max(non_zero_A)
+        left_B = min(non_zero_B)
+        right_B = max(non_zero_B)
+        
+        # 교환 패턴: A[left] → B[right], A[right] → B[left]
+        if left_A == left_B and right_A == right_B:
+            left_surplus = A[left_A] - B[left_A]  # 왼쪽에서 오른쪽으로 보내야 할 양
+            right_deficit = B[right_A] - A[right_A]  # 오른쪽에서 부족한 양
+            
+            # 완전 교환 조건: 왼쪽에서 초과, 오른쪽에서 부족, 
+            # 그리고 오른쪽 씨앗을 왼쪽 굴로 보낼 수 있음
+            if left_surplus > 0 and right_deficit > 0 and A[right_A] > 0 and B[left_A] > 0:
+                # A[right] → B[left]로 보내고, A[left] - B[left] + A[right] → B[right]로
+                # 완전 교환: A[left] 전부 → 굴[right], A[right] 전부 → 굴[left]
+                if A[right_A] <= B[left_A]:  # 오른쪽 씨앗이 왼쪽 굴 요구량 이하
+                    exchanges.append((left_A, right_A, A[left_A], A[right_A]))
+    
+    # 완전 교환 패턴 처리
+    if exchanges:
+        left_col, right_col, left_to_right, right_to_left = exchanges[0]
+        dist = right_col - left_col
+        
+        # 행 1에서 왼쪽→오른쪽 점프
+        # 행 2에서 오른쪽→왼쪽 점프
+        
+        # 왼쪽 열 경로: D → nR → (R-1)D
+        grid[0][left_col] = 'D'
+        grid[1][left_col] = f'{dist}R'
+        remaining_down = R - 1
+        if remaining_down >= 2:
+            grid[1][right_col] = f'{remaining_down}D'
+        else:
+            grid[1][right_col] = 'D'
+        
+        # 오른쪽 열 경로: 2D → nL → (R-2)D
+        if R > 2:
+            grid[0][right_col] = '2D'
+            grid[2][right_col] = f'{dist}L'
+            remaining_down = R - 2
+            if remaining_down >= 2:
+                grid[2][left_col] = f'{remaining_down}D'
+            else:
+                grid[2][left_col] = 'D'
+        else:
+            # R=2인 경우 다른 패턴 필요
+            grid[0][right_col] = 'D'
+            grid[1][right_col] = f'{dist}L'
+            grid[1][left_col] = 'D'
+        
+        print(R)
+        for r in range(R):
+            print(' '.join(grid[r]))
+        return
+    
+    # 기본 전송 계획 (단방향)
     # 오른쪽 전송
     for c in range(C - 1):
         if flow[c] > 0:
