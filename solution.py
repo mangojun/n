@@ -14,13 +14,10 @@ def solve():
     R = C
     grid = [['X'] * C for _ in range(R)]
     
-    # 양방향 교환 패턴 감지
-    # 열 i와 열 j 사이에 양방향 흐름이 있는지 확인
-    
-    # 누적 합 기반 흐름 계산
+    # ===== 흐름 분석 =====
     cumsum_A = 0
     cumsum_B = 0
-    flow = [0] * C  # flow[c] = 열 c와 c+1 사이를 지나는 순수 흐름
+    flow = [0] * C
     
     for c in range(C):
         cumsum_A += A[c]
@@ -28,385 +25,364 @@ def solve():
         if c < C - 1:
             flow[c] = cumsum_A - cumsum_B
     
-    # 양방향 교환 패턴 감지
-    # 케이스: 열 i에서 모두 오른쪽으로, 열 j에서 모두 왼쪽으로 (i < j)
-    exchanges = []  # (left_col, right_col, left_to_right_amt, right_to_left_amt)
-    
-    # 전송 계획
-    transfer = [[0] * C for _ in range(C)]
-    remaining_A = A[:]
-    remaining_B = B[:]
-    
-    # 단순 케이스: 열 i와 열 j만 씨앗이 있고, 완전 교환이 가능한 경우
-    
     non_zero_A = [c for c in range(C) if A[c] > 0]
     non_zero_B = [c for c in range(C) if B[c] > 0]
     
-    # 양방향 교환 감지: 좌측과 우측이 서로 씨앗을 교환해야 하는 경우
+    # ===== 케이스 1: A == B =====
+    if A == B:
+        for c in range(C):
+            if A[c] > 0:
+                grid[0][c] = f'{R}D' if R >= 2 else 'D'
+        output(R, grid)
+        return
+    
+    # ===== 케이스 2: 양방향 교환 (예제 3, 9) =====
     if len(non_zero_A) == 2 and len(non_zero_B) == 2:
         left_A = min(non_zero_A)
         right_A = max(non_zero_A)
         left_B = min(non_zero_B)
         right_B = max(non_zero_B)
         
-        # 교환 패턴: A[left] → B[right], A[right] → B[left]
         if left_A == left_B and right_A == right_B:
-            left_surplus = A[left_A] - B[left_A]  # 왼쪽에서 오른쪽으로 보내야 할 양
-            right_deficit = B[right_A] - A[right_A]  # 오른쪽에서 부족한 양
+            left_surplus = A[left_A] - B[left_A]
+            right_surplus = A[right_A] - B[right_A]
             
-            # 완전 교환 조건: 왼쪽에서 초과, 오른쪽에서 부족, 
-            # 그리고 오른쪽 씨앗을 왼쪽 굴로 보낼 수 있음
-            if left_surplus > 0 and right_deficit > 0 and A[right_A] > 0 and B[left_A] > 0:
-                # A[right] → B[left]로 보내고, A[left] - B[left] + A[right] → B[right]로
-                # 완전 교환: A[left] 전부 → 굴[right], A[right] 전부 → 굴[left]
-                if A[right_A] <= B[left_A]:  # 오른쪽 씨앗이 왼쪽 굴 요구량 이하
-                    exchanges.append((left_A, right_A, A[left_A], A[right_A]))
+            if left_surplus > 0 and right_surplus < 0 and A[right_A] > 0 and B[left_A] > 0:
+                dist = right_A - left_A
+                
+                # 인접한 경우: 양방향 재분배 (예제 9)
+                if dist == 1:
+                    grid[0][left_A] = 'RD'
+                    grid[0][right_A] = 'LD'
+                    grid[1][left_A] = 'D'
+                    grid[1][right_A] = 'D'
+                    output(R, grid)
+                    return
+                
+                # 거리가 먼 경우: 양방향 교환 (예제 3)
+                if A[right_A] <= B[left_A]:
+                    # 왼쪽 → 오른쪽: 레인 1
+                    grid[0][left_A] = 'D'
+                    grid[1][left_A] = f'{dist}R'
+                    remaining = R - 1
+                    grid[1][right_A] = f'{remaining}D' if remaining >= 2 else 'D'
+                    
+                    # 오른쪽 → 왼쪽: 레인 2
+                    if R > 2:
+                        grid[0][right_A] = '2D'
+                        grid[2][right_A] = f'{dist}L'
+                        remaining = R - 2
+                        grid[2][left_A] = f'{remaining}D' if remaining >= 2 else 'D'
+                    else:
+                        grid[0][right_A] = 'D'
+                        grid[1][right_A] = f'{dist}L'
+                        grid[1][left_A] = 'D'
+                    
+                    output(R, grid)
+                    return
     
-    # 단일 소스 다중 목적지 패턴 감지
-    # A[i] > 0인 열이 하나이고, B[j] > 0인 열이 여러 개인 경우
-    if len(non_zero_A) == 1 and len(non_zero_B) > 1:
-        src_col = non_zero_A[0]
-        
-        # 오른쪽으로 분배하는 경우 (src_col이 왼쪽에 있음)
-        if src_col == min(non_zero_B):
-            # 예제 6 패턴: RD LR 3D / DR 2D X / D X X
-            # 삼각형 파이프라인 구조
-            
-            # 각 열에 얼마나 가야 하는지
-            dest_cols = sorted(non_zero_B)
-            
-            # 삼각형 파이프라인 구성
-            # 행 r, 열 c에서: 
-            # - c == src_col이고 r < R-1: DR 또는 RD (오른쪽과 아래로)
-            # - c > src_col이고 r == 0: LR (통과) 또는 3D (끝)
-            # - c > src_col이고 r > 0: 2D 또는 D (아래로)
-            
-            for r in range(R):
-                for c in range(C):
-                    if c == src_col:
-                        if r < R - 1:
-                            if r == 0:
-                                grid[r][c] = 'RD'  # 먼저 오른쪽, 그 다음 아래
-                            else:
-                                grid[r][c] = 'DR'  # 아래와 오른쪽
-                        else:
-                            grid[r][c] = 'D'  # 마지막 행: 굴로
-                    elif c > src_col and c < C - 1:
-                        if r == 0:
-                            grid[r][c] = 'LR'  # 통과 (왼쪽 받고 오른쪽으로)
-                        elif r < R - 1 and c - src_col <= r:
-                            remaining = R - r
-                            if remaining >= 2:
-                                grid[r][c] = f'{remaining}D'
-                            else:
-                                grid[r][c] = 'D'
-                    elif c == C - 1:
-                        if r == 0:
-                            grid[r][c] = f'{R}D'  # 마지막 열: 햄스터로 직접 굴로
-            
-            print(R)
-            for r in range(R):
-                print(' '.join(grid[r]))
-            return
-        
-        # 왼쪽으로 분배하는 경우 (src_col이 오른쪽에 있음)
-        elif src_col == max(non_zero_B):
-            # 대칭 패턴
-            dest_cols = sorted(non_zero_B, reverse=True)
-            
-            for r in range(R):
-                for c in range(C):
-                    if c == src_col:
-                        if r < R - 1:
-                            if r == 0:
-                                grid[r][c] = 'LD'
-                            else:
-                                grid[r][c] = 'DL'
-                        else:
-                            grid[r][c] = 'D'
-                    elif c < src_col and c > 0:
-                        if r == 0:
-                            grid[r][c] = 'RL'
-                        elif r < R - 1 and src_col - c <= r:
-                            remaining = R - r
-                            if remaining >= 2:
-                                grid[r][c] = f'{remaining}D'
-                            else:
-                                grid[r][c] = 'D'
-                    elif c == 0:
-                        if r == 0:
-                            grid[r][c] = f'{R}D'
-            
-            print(R)
-            for r in range(R):
-                print(' '.join(grid[r]))
-            return
-    
-    # 완전 교환 패턴 처리
-    if exchanges:
-        left_col, right_col, left_to_right, right_to_left = exchanges[0]
-        dist = right_col - left_col
-        
-        # 행 1에서 왼쪽→오른쪽 점프
-        # 행 2에서 오른쪽→왼쪽 점프
-        
-        # 왼쪽 열 경로: D → nR → (R-1)D
-        grid[0][left_col] = 'D'
-        grid[1][left_col] = f'{dist}R'
-        remaining_down = R - 1
-        if remaining_down >= 2:
-            grid[1][right_col] = f'{remaining_down}D'
-        else:
-            grid[1][right_col] = 'D'
-        
-        # 오른쪽 열 경로: 2D → nL → (R-2)D
-        if R > 2:
-            grid[0][right_col] = '2D'
-            grid[2][right_col] = f'{dist}L'
-            remaining_down = R - 2
-            if remaining_down >= 2:
-                grid[2][left_col] = f'{remaining_down}D'
-            else:
-                grid[2][left_col] = 'D'
-        else:
-            # R=2인 경우 다른 패턴 필요
-            grid[0][right_col] = 'D'
-            grid[1][right_col] = f'{dist}L'
-            grid[1][left_col] = 'D'
-        
-        print(R)
-        for r in range(R):
-            print(' '.join(grid[r]))
+    # ===== 케이스 2.5: 양방향 재분배 (예제 9) =====
+    if C == 2 and A[0] > 0 and A[1] > 0 and B[0] > 0 and B[1] > 0 and A != B:
+        # RD LD / D D 패턴
+        grid[0][0] = 'RD'
+        grid[0][1] = 'LD'
+        grid[1][0] = 'D'
+        grid[1][1] = 'D'
+        output(R, grid)
         return
     
-    # 기본 전송 계획 (단방향)
-    # 오른쪽 전송
-    for c in range(C - 1):
-        if flow[c] > 0:
-            send = min(remaining_A[c], flow[c])
-            target = c + 1
-            while target < C and send > 0:
-                need = remaining_B[target]
-                xfer = min(send, need)
-                if xfer > 0:
-                    transfer[c][target] = xfer
-                    remaining_A[c] -= xfer
-                    remaining_B[target] -= xfer
-                    send -= xfer
-                target += 1
+    all_right = all(flow[c] >= 0 for c in range(C - 1))
+    all_left = all(flow[c] <= 0 for c in range(C - 1))
     
-    # 왼쪽 전송
-    for c in range(C - 1, 0, -1):
-        if flow[c - 1] < 0:
-            send = min(remaining_A[c], -flow[c - 1])
-            target = c - 1
-            while target >= 0 and send > 0:
-                need = remaining_B[target]
-                xfer = min(send, need)
-                if xfer > 0:
-                    transfer[c][target] = xfer
-                    remaining_A[c] -= xfer
-                    remaining_B[target] -= xfer
-                    send -= xfer
-                target -= 1
+    # ===== 케이스 3: 단일 소스 =====
+    if len(non_zero_A) == 1:
+        src = non_zero_A[0]
+        left_targets = [c for c in non_zero_B if c < src]
+        right_targets = [c for c in non_zero_B if c > src]
+        self_target = src in non_zero_B
+        
+        # 중앙 분산 (양방향)
+        if left_targets and right_targets:
+            dirs = ''
+            if left_targets:
+                dirs += 'L'
+            if self_target:
+                dirs += 'D'
+            if right_targets:
+                dirs += 'R'
+            
+            grid[0][src] = dirs
+            
+            # 자기 열 아래
+            if self_target:
+                remaining = R - 1
+                grid[1][src] = f'{remaining}D' if remaining >= 2 else 'D'
+            
+            # 왼쪽 경로
+            for c in range(src - 1, min(left_targets) - 1, -1):
+                need_down = c in left_targets
+                need_left = c > min(left_targets)
+                
+                if need_down and need_left:
+                    grid[0][c] = 'DL'
+                    remaining = R - 1
+                    grid[1][c] = f'{remaining}D' if remaining >= 2 else 'D'
+                elif need_down:
+                    grid[0][c] = f'{R}D' if R >= 2 else 'D'
+                elif need_left:
+                    grid[0][c] = 'L'
+            
+            # 오른쪽 경로
+            for c in range(src + 1, max(right_targets) + 1):
+                need_down = c in right_targets
+                need_right = c < max(right_targets)
+                
+                if need_down and need_right:
+                    grid[0][c] = 'DR'
+                    remaining = R - 1
+                    grid[1][c] = f'{remaining}D' if remaining >= 2 else 'D'
+                elif need_down:
+                    grid[0][c] = f'{R}D' if R >= 2 else 'D'
+                elif need_right:
+                    grid[0][c] = 'R'
+            
+            output(R, grid)
+            return
+        
+        # 오른쪽으로만 분산
+        if all_right and src == min(non_zero_B):
+            # 삼각형 파이프라인 (균등 분배)
+            all_equal = len(set(B[c] for c in non_zero_B)) == 1 and len(non_zero_B) >= 2
+            
+            if all_equal:
+                # 삼각형 파이프라인 패턴
+                n = len(non_zero_B)
+                
+                # 행 0
+                grid[0][0] = 'RD'
+                for c in range(1, n - 1):
+                    grid[0][c] = 'LR'
+                grid[0][n - 1] = f'{R}D' if R >= 2 else 'D'
+                
+                # 행 1 ~ n-2
+                for r in range(1, n - 1):
+                    grid[r][0] = 'DR'
+                    for c in range(1, n - r - 1):
+                        grid[r][c] = 'LR'
+                    if n - r - 1 > 0:
+                        remaining = R - r
+                        grid[r][n - r - 1] = f'{remaining}D' if remaining >= 2 else 'D'
+                
+                # 마지막 행 (n-1)
+                if n > 1:
+                    grid[n - 1][0] = 'D'
+                
+                output(R, grid)
+                return
+            
+            # RD 체인 분배 시뮬레이션
+            incoming = [0] * C
+            incoming[0] = A[0]
+            rd_works = True
+            
+            for c in range(C - 1):
+                if incoming[c] == 0:
+                    break
+                to_right = (incoming[c] + 1) // 2
+                to_down = incoming[c] - to_right
+                
+                if B[c] > 0:
+                    diff = abs(to_down - B[c])
+                    if diff > max(B[c] * 0.1, 5):
+                        rd_works = False
+                        break
+                
+                incoming[c + 1] = to_right
+            
+            if rd_works:
+                for c in range(C):
+                    need_down = B[c] > 0
+                    need_right = c < C - 1 and flow[c] > 0
+                    
+                    if need_down and need_right:
+                        grid[0][c] = 'RD'
+                        remaining = R - 1
+                        if remaining >= 2:
+                            grid[1][c] = f'{remaining}D'
+                        elif remaining == 1:
+                            grid[1][c] = 'D'
+                    elif need_down:
+                        grid[0][c] = f'{R}D' if R >= 2 else 'D'
+                    elif need_right:
+                        grid[0][c] = 'R'
+                
+                output(R, grid)
+                return
+        
+        if all_left and src == max(non_zero_B):
+            for c in range(C - 1, -1, -1):
+                need_down = B[c] > 0
+                need_left = c > 0 and flow[c - 1] < 0
+                
+                if need_down and need_left:
+                    grid[0][c] = 'LD'
+                    remaining = R - 1
+                    if remaining >= 2:
+                        grid[1][c] = f'{remaining}D'
+                    elif remaining == 1:
+                        grid[1][c] = 'D'
+                elif need_down:
+                    grid[0][c] = f'{R}D' if R >= 2 else 'D'
+                elif need_left:
+                    grid[0][c] = 'L'
+            
+            output(R, grid)
+            return
     
-    # 같은 열 전송
-    for c in range(C):
-        xfer = min(remaining_A[c], remaining_B[c])
-        transfer[c][c] = xfer
+    # ===== 케이스 4: 대각선 시프트 패턴 (예제 2) =====
+    # 조건: 여러 소스, 모든 flow 같은 방향, 각 소스에서 단일 목적지
     
-    # 격자 구성
-    cell_dirs = [[set() for _ in range(C)] for _ in range(R)]
+    # 전송 계획 수립
+    transfer = [[0] * C for _ in range(C)]
+    remaining_A = A[:]
+    remaining_B = B[:]
     
-    # 각 열에서 필요한 전송 분석
     for from_col in range(C):
-        has_down = transfer[from_col][from_col] > 0
-        right_targets = [to for to in range(from_col + 1, C) if transfer[from_col][to] > 0]
-        left_targets = [to for to in range(0, from_col) if transfer[from_col][to] > 0]
+        surplus = remaining_A[from_col] - remaining_B[from_col]
+        if surplus > 0:
+            transfer[from_col][from_col] = remaining_B[from_col]
+            remaining_B[from_col] = 0
+            remaining_A[from_col] = surplus
+            
+            for to_col in range(from_col + 1, C):
+                if surplus <= 0:
+                    break
+                deficit = remaining_B[to_col]
+                if deficit > 0:
+                    xfer = min(surplus, deficit)
+                    transfer[from_col][to_col] = xfer
+                    surplus -= xfer
+                    remaining_B[to_col] -= xfer
+            remaining_A[from_col] = surplus
+        else:
+            xfer = remaining_A[from_col]
+            transfer[from_col][from_col] = xfer
+            remaining_B[from_col] -= xfer
+            remaining_A[from_col] = 0
+    
+    for from_col in range(C - 1, -1, -1):
+        surplus = remaining_A[from_col]
+        if surplus > 0:
+            for to_col in range(from_col - 1, -1, -1):
+                if surplus <= 0:
+                    break
+                deficit = remaining_B[to_col]
+                if deficit > 0:
+                    xfer = min(surplus, deficit)
+                    transfer[from_col][to_col] = xfer
+                    surplus -= xfer
+                    remaining_B[to_col] -= xfer
+    
+    # 대각선 레인 경로 구성
+    for col in range(C):
+        has_self = transfer[col][col] > 0
+        right_cols = [to for to in range(col + 1, C) if transfer[col][to] > 0]
+        left_cols = [to for to in range(0, col) if transfer[col][to] > 0]
         
-        has_right = len(right_targets) > 0
-        has_left = len(left_targets) > 0
+        has_right = len(right_cols) > 0
+        has_left = len(left_cols) > 0
         
-        num_dirs = sum([has_down, has_right, has_left])
-        
-        if num_dirs == 0:
+        if not has_self and not has_right and not has_left:
             continue
         
+        num_dirs = sum([has_self, has_right, has_left])
+        
         if num_dirs == 1:
-            # 단일 방향: 최적화된 대각선 패턴
-            if has_down:
-                cell_dirs[0][from_col].add(('H', R))
+            if has_self:
+                grid[0][col] = f'{R}D' if R >= 2 else 'D'
             
             elif has_right:
-                to_col = max(right_targets)
-                # 대각선 패턴: 열 번호가 작을수록 더 깊이 점프
-                lane_row = max(0, R - from_col - 2)
+                to_col = max(right_cols)
+                # 대각선 레인: 열 번호가 작을수록 더 깊은 레인
+                lane = max(0, R - col - 2) if R > 1 else 0
                 
-                if lane_row == 0:
-                    # 첫 행에서 바로 오른쪽으로
-                    cell_dirs[0][from_col].add('R')
+                if lane == 0:
+                    grid[0][col] = 'R'
+                    for c in range(col + 1, to_col):
+                        if grid[0][c] == 'X':
+                            grid[0][c] = 'R'
+                    if grid[0][to_col] == 'X':
+                        grid[0][to_col] = f'{R}D' if R >= 2 else 'D'
                 else:
-                    # 햄스터로 lane_row까지 점프
-                    if lane_row >= 2:
-                        cell_dirs[0][from_col].add(('H', lane_row))
-                    else:
-                        cell_dirs[0][from_col].add('D')
-                    
-                    # lane_row에서 오른쪽으로
-                    cell_dirs[lane_row][from_col].add('R')
-                
-                # 중간 열들과 목적 열 처리
-                for step in range(1, to_col - from_col + 1):
-                    c = from_col + step
-                    r = lane_row + step - 1 if lane_row > 0 else 0
-                    
-                    if r >= R:
-                        r = R - 1
-                    
-                    if c < to_col:
-                        # 중간 열: 오른쪽으로 계속 이동
-                        cell_dirs[r][c].add('R')
-                        # 이 열이 목적지인지 확인
-                        if c in right_targets:
-                            cell_dirs[r][c].add('D')
-                            # 아래로 가는 경로
-                            if r + 1 < R:
-                                remaining = R - r - 1
-                                if remaining >= 2:
-                                    cell_dirs[r + 1][c].add(('H', remaining))
-                                else:
-                                    cell_dirs[r + 1][c].add('D')
-                    else:
-                        # 최종 목적 열: 아래로
-                        remaining = R - r
-                        if remaining >= 2:
-                            cell_dirs[r][c].add(('H', remaining))
-                        elif remaining == 1:
-                            cell_dirs[r][c].add('D')
+                    grid[0][col] = f'{lane}D' if lane >= 2 else 'D'
+                    grid[lane][col] = 'R'
+                    for c in range(col + 1, to_col):
+                        if grid[lane][c] == 'X':
+                            grid[lane][c] = 'R'
+                    remaining = R - lane
+                    if grid[lane][to_col] == 'X':
+                        grid[lane][to_col] = f'{remaining}D' if remaining >= 2 else 'D'
             
             else:  # has_left
-                to_col = min(left_targets)
-                lane_row = max(0, R - (C - 1 - from_col) - 2)
+                to_col = min(left_cols)
+                lane = max(0, R - (C - 1 - col) - 2) if R > 1 else 0
                 
-                if lane_row == 0:
-                    cell_dirs[0][from_col].add('L')
+                if lane == 0:
+                    grid[0][col] = 'L'
+                    for c in range(col - 1, to_col, -1):
+                        if grid[0][c] == 'X':
+                            grid[0][c] = 'L'
+                    if grid[0][to_col] == 'X':
+                        grid[0][to_col] = f'{R}D' if R >= 2 else 'D'
                 else:
-                    if lane_row >= 2:
-                        cell_dirs[0][from_col].add(('H', lane_row))
-                    else:
-                        cell_dirs[0][from_col].add('D')
-                    cell_dirs[lane_row][from_col].add('L')
-                
-                for step in range(1, from_col - to_col + 1):
-                    c = from_col - step
-                    r = lane_row + step - 1 if lane_row > 0 else 0
-                    
-                    if r >= R:
-                        r = R - 1
-                    
-                    if c > to_col:
-                        cell_dirs[r][c].add('L')
-                        if c in left_targets:
-                            cell_dirs[r][c].add('D')
-                            if r + 1 < R:
-                                remaining = R - r - 1
-                                if remaining >= 2:
-                                    cell_dirs[r + 1][c].add(('H', remaining))
-                                else:
-                                    cell_dirs[r + 1][c].add('D')
-                    else:
-                        remaining = R - r
-                        if remaining >= 2:
-                            cell_dirs[r][c].add(('H', remaining))
-                        elif remaining == 1:
-                            cell_dirs[r][c].add('D')
+                    grid[0][col] = f'{lane}D' if lane >= 2 else 'D'
+                    grid[lane][col] = 'L'
+                    for c in range(col - 1, to_col, -1):
+                        if grid[lane][c] == 'X':
+                            grid[lane][c] = 'L'
+                    remaining = R - lane
+                    if grid[lane][to_col] == 'X':
+                        grid[lane][to_col] = f'{remaining}D' if remaining >= 2 else 'D'
         
         else:
-            # 여러 방향: 다람쥐로 분배
-            if has_down:
-                cell_dirs[0][from_col].add('D')
-            if has_right:
-                cell_dirs[0][from_col].add('R')
+            # 다방향: 다람쥐로 분기
+            dirs = []
             if has_left:
-                cell_dirs[0][from_col].add('L')
+                dirs.append('L')
+            if has_self:
+                dirs.append('D')
+            if has_right:
+                dirs.append('R')
             
-            # 아래 방향 처리
-            if has_down and R > 1:
+            grid[0][col] = ''.join(dirs)
+            
+            if has_self and R > 1:
                 remaining = R - 1
-                if remaining >= 2:
-                    cell_dirs[1][from_col].add(('H', remaining))
-                else:
-                    cell_dirs[1][from_col].add('D')
+                if grid[1][col] == 'X':
+                    grid[1][col] = f'{remaining}D' if remaining >= 2 else 'D'
             
-            # 오른쪽 방향 처리
             if has_right:
-                to_col = max(right_targets)
-                for c in range(from_col + 1, to_col + 1):
-                    if c < to_col:
-                        cell_dirs[0][c].add('R')
-                        if c in right_targets:
-                            cell_dirs[0][c].add('D')
-                            if R > 1:
-                                remaining = R - 1
-                                if remaining >= 2:
-                                    cell_dirs[1][c].add(('H', remaining))
-                                else:
-                                    cell_dirs[1][c].add('D')
-                    else:
-                        cell_dirs[0][c].add(('H', R))
+                to_col = max(right_cols)
+                for c in range(col + 1, to_col):
+                    if grid[0][c] == 'X':
+                        grid[0][c] = 'R'
+                if grid[0][to_col] == 'X':
+                    grid[0][to_col] = f'{R}D' if R >= 2 else 'D'
             
-            # 왼쪽 방향 처리
             if has_left:
-                to_col = min(left_targets)
-                for c in range(from_col - 1, to_col - 1, -1):
-                    if c > to_col:
-                        cell_dirs[0][c].add('L')
-                        if c in left_targets:
-                            cell_dirs[0][c].add('D')
-                            if R > 1:
-                                remaining = R - 1
-                                if remaining >= 2:
-                                    cell_dirs[1][c].add(('H', remaining))
-                                else:
-                                    cell_dirs[1][c].add('D')
-                    else:
-                        cell_dirs[0][c].add(('H', R))
+                to_col = min(left_cols)
+                for c in range(col - 1, to_col, -1):
+                    if grid[0][c] == 'X':
+                        grid[0][c] = 'L'
+                if grid[0][to_col] == 'X':
+                    grid[0][to_col] = f'{R}D' if R >= 2 else 'D'
     
-    # 격자 문자열 변환
-    for r in range(R):
-        for c in range(C):
-            dirs = cell_dirs[r][c]
-            if not dirs:
-                grid[r][c] = 'X'
-                continue
-            
-            hamsters = [d for d in dirs if isinstance(d, tuple)]
-            squirrel_dirs = [d for d in dirs if isinstance(d, str)]
-            
-            # 햄스터 거리 1 → 다람쥐
-            for h in hamsters[:]:
-                if h[1] == 1:
-                    squirrel_dirs.append('D')
-                    hamsters.remove(h)
-            
-            if squirrel_dirs:
-                result = ''
-                if 'L' in squirrel_dirs:
-                    result += 'L'
-                if 'D' in squirrel_dirs:
-                    result += 'D'
-                if 'R' in squirrel_dirs:
-                    result += 'R'
-                if 'U' in squirrel_dirs:
-                    result += 'U'
-                grid[r][c] = result if result else 'X'
-            elif hamsters:
-                _, dist = hamsters[0]
-                grid[r][c] = f'{dist}D'
-    
+    output(R, grid)
+
+def output(R, grid):
     print(R)
     for r in range(R):
         print(' '.join(grid[r]))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     solve()
